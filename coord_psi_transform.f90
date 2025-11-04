@@ -2,20 +2,18 @@ program psi_transform
     
     use decimal, only: long, dop
     use global
+    use rdfilesmod
     use iofile
     use iopsifile
 
     implicit none
-    real(long), intent(inout) :: psi
-    real(long), intent(in) :: m1,m2,m3
-    character(len=c5) :: filename
-    character(len=10) :: stat
-    logical(kind=4) :: lerr,lexist,linwf
-    complex(dop), dimension(dgldim), intent(out) :: psi,trpsi
 
+    !-----------------------------------------------------------------------
+    ! Initialize variables and set defaults
+    !-----------------------------------------------------------------------
     call default
     call adefault
-    
+
     !-----------------------------------------------------------------------
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Declare files to be read
@@ -53,44 +51,20 @@ program psi_transform
     lgpop=.false.
     ltrafo=.true.
 
-    !-----------------------------------------------------------------------
-    ! read input parameters and options
-    ! open files
-    !-----------------------------------------------------------------------
-    call expinput(stat)
-
-    !-----------------------------------------------------------------------
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! open input and output data files
-    !
-    ! use standard channels if possible
-    !  irho : gridpop file
-    !  ipsi : psi file
-    !  iaut : auto file
-    !  ichk : check file
-    !  iaus : output file
-    !-----------------------------------------------------------------------
-    filename=filein
-    open(ipsi,file=filename,form='unformatted',status='old',err=1000)
-    if (fileout .ne. 'no') then
-        filename=fileout
-        open(iaus,file=filename,form='formatted',&
-            status=stat,err=1000)
-    else
-        iaus=6
-    endif
-
+    dnaem="./"
+    filename=dname//'/psi'
+    open(ipsi,file=filein,form='unformatted',status='old',err=900)
     !-----------------------------------------------------------------------
     ! get memory sizes 
     !-----------------------------------------------------------------------
     call rdmemdim(ipsi)
-    if (lrdoper) then
-        filename=operfile
-        ilbl=index(filename,' ')-1
-        open(ioper,file=filename,form='unformatted',status='old',err=900)
-        call rdmemdim(ioper)
-        close(ioper)
-    endif
+    ! if (lrdoper) then
+    !     filename=operfile
+    !     ilbl=index(filename,' ')-1
+    !     open(ioper,file=filename,form='unformatted',status='old',err=900)
+    !     call rdmemdim(ioper)
+    !     close(ioper)
+    ! endif
 
     !-----------------------------------------------------------------------
     ! Allocate memory 
@@ -98,12 +72,12 @@ program psi_transform
     allocmemory=0
     call alloc_dvrdat
     call alloc_grddat
-    call alloc_operdef
+    ! call alloc_operdef
     call alloc_psidef
-    call alloc_runpropmod
-    allocate(lfast(maxrdf))
-    lfastall=.false.
-    lfast(:)=.false.
+    ! call alloc_runpropmod
+    ! allocate(lfast(maxrdf))
+    ! lfastall=.false.
+    ! lfast(:)=.false.
 
     !-----------------------------------------------------------------------
     ! Read system information from property file(s)
@@ -118,121 +92,30 @@ program psi_transform
     chkdat=1
     chkprp=0
     filename=filein
-    if (irst.eq.ipsi) then
-        call rstinfo(linwf,lerr,chkdvr,chkgrd,chkpsi,chkprp)
-        if (citype .gt. 0) then
-        routine='expect'
-        message='citype .gt.0 not implemented for restart files.'
-        call errormsg
-        endif
-        filename='restart (-rst option)'
-        if (lerr) goto 999
-    else
-        rewind(ipsi)
-        read(ipsi,err=999) filever(ipsi)
-        call rdpsiinfo(ipsi,chkdvr,chkgrd,chkpsi,chkdat)
-        filename='psi'
-        call chksyserr(filename,lerr)
-        if (lerr) go to 999
-    endif
+    rewind(ipsi)
+    read(ipsi,err=999) filever(ipsi)
+    call rdpsiinfo(ipsi,chkdvr,chkgrd,chkpsi,chkdat)
+    call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
 
-    !-----------------------------------------------------------------------
-    ! read information from system files
-    !-----------------------------------------------------------------------
+    check=1
+    call rdpsidef(ipsi,check)
+    close(ipsi)
+
     if (lrddvr) then
         chkdvr=2
         filename=dname(1:dlaenge)//'/dvr'
-        open(idvr,file=filename,form='unformatted',status='old',&
-            err=1000)
-        call dvrinfo(lerr,chkdvr)
+        open(idvr,file=filename,form='unformatted',status='old',err=1000)
+        
+        call dvrinfo(lrddvr,chkdvr)
+        call rddvr(ort,trafo,dvrmat,fftp,hin,rueck,fftfak,exphin,&
+                exprueck,jsph,msph,kinsph,chkdvr)
+
+        check_dvr=1
+        call rddvrdef(idvr,check_dvr)
         close(idvr)
-        call chksyserr(filename,lerr)
-        if (lerr) go to 999
-    endif
-    if (lrdoper) then
-        chkdvr=2
-        chkgrd=2
-        filename=operfile
-        open(ioper,file=filename,form='unformatted',status='old',&
-            err=1000)
-        call operinfo(lerr,chkdvr,chkgrd)
-        call chksyserr(filename,lerr)
-        if (lerr) go to 999
     endif
 
-    close(ioper)
 
-    !-----------------------------------------------------------------------
-    ! assign pointers and sizes for required arrays
-    ! assign memory arrays
-    !-----------------------------------------------------------------------
-    call zeigausw
-    call memausw
-
-    !-----------------------------------------------------------------------
-    !  assign memory for operator
-    ! workcdim etc needed for legacy
-    !-----------------------------------------------------------------------
-    workcdim=1
-    mcworkc=mcdim
-    workidim=1
-    miworki=midim
-    workrdim=1
-    mrworkr=mrdim
-    workldim=1
-    mlworkl=mldim
-    if (lrdoper) call memhops
-
-    !-----------------------------------------------------------------------
-    ! read data from dvr file if desired
-    ! edit which data (set dvrdata(x) to .true. and substitute dummy array)
-    !-----------------------------------------------------------------------
-    if (lrddvr) then
-        dvrdata(1)=.true.     ! ort
-        dvrdata(2)=.false.    ! trafo
-        dvrdata(3)=.false.    ! dvrmat (dif1mat, dif2mat)
-        dvrdata(4)=.false.    ! fftp (fft momentum)
-        dvrdata(5)=.true.     ! hin (fft)
-        dvrdata(6)=.true.     ! rueck (fft)
-        dvrdata(7)=.true.     ! fftfak
-        dvrdata(8)=.false.    ! jsph
-        dvrdata(9)=.false.    ! msph
-        dvrdata(10)=.false.   ! kinsph
-        dvrdata(11)=.true.    ! exphin
-        dvrdata(12)=.true.    ! exprueck
-        chkdvr=1
-        call rddvr(ort,rdum,rdum1,rdum2,hin,&
-        rueck,fftfak,zdum,zdum1,idum,idum1,rdum3,chkdvr)
-    endif
-
-    !-----------------------------------------------------------------------
-    ! loop over steps
-    !-----------------------------------------------------------------------
-    if (irst.ne.ipsi.and.nskip.gt.0)then
-        do n=1,nskip
-        call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
-        if (lend) go to 77
-        time=time+out2
-        enddo
-    endif
-    nz=0
-    ns=1
-    if (logisopen) then
-        ispeed=ilog
-        spent=fcputime(0)+fsystime(0)
-        call speedout(-out2*step)
-    endif
-
-10 continue
-    if ( irst .eq. ipsi ) then
-        read(ipsi,err=990) time
-        read(ipsi,err=990) (psi(i),i=1,dgldim)
-    else
-        call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
-        if (lend) goto 77
-    endif
-
-    call zerovxz(dtpsi,dgldim)
 
     contains
 
