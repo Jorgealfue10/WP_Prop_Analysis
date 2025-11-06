@@ -75,7 +75,7 @@ program psi_transform
 
     dname="./"
     filename=dname//'psi'
-    open(ipsi,file=filein,form='unformatted',status='old',err=900)
+    open(ipsi,file=filename,form='unformatted',status='old',err=900)
     rewind(ipsi)
     read(ipsi,err=999) filever(ipsi)
     call rdpsiinfo(ipsi,chkdvr,chkgrd,chkpsi,chkdat)
@@ -146,7 +146,7 @@ program psi_transform
                 rg = rg_grid(ig)
                 theta = th_grid(ith)
 
-                call trans_coord(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
+                call transform_coord(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
 
                 rpp_grid(idx) = rpp
                 rgp_grid(idx) = rgp
@@ -164,49 +164,48 @@ program psi_transform
     ! Jacobi products              !
     !==============================!
 
-    subroutine Jac_to_ic(rg,rp,theta,r12,r13,r23,m1,m2,m3)
+    subroutine Jac_to_ic(rg, rp, theta, r12, r13, r23, m1, m2, m3)
         implicit none
-        real(long),intent(in) :: rg,rp,theta,m1,m2,m3
-        real(long),intent(out) :: r12,r13,r23
-        real(long) :: thrad,mred1,mred2,mred3
-        
-        thrad=theta
-        
-        mred2 = (m2/(m2+m3))
-        mred3 = (m3/(m2+m3))
+        real(dop), intent(in)  :: rg, rp, theta, m1, m2, m3
+        real(dop), intent(out) :: r12, r13, r23
+        real(dop) :: thrad, mred2, mred3
 
-        r12=dsqrt(rg*rg + mred3*mred3*rp*rp + 2.d0*rg*mred3*rp*dcos(thrad))
-        r13=dsqrt(rg*rg + mred2*mred2*rp*rp - 2.d0*rg*mred2*rp*dcos(thrad))
-        r23=rp
+        thrad = theta
+        mred2 = m2/(m2+m3)
+        mred3 = m3/(m2+m3)
 
-    end subroutine get_ic
+        r12 = sqrt(rg*rg + (mred3*rp)**2 + 2.d0*rg*mred3*rp*cos(thrad))
+        r13 = sqrt(rg*rg + (mred2*rp)**2 - 2.d0*rg*mred2*rp*cos(thrad))
+        r23 = rp
 
-    subroutine ic_to_Jac(rg,rp,theta,r12,r13,r23,m1,m2,m3)
+    end subroutine Jac_to_ic
+
+    subroutine ic_to_Jac(rg, rp, theta, r12, r13, r23, m1, m2, m3)
         implicit none
-        real(long),intent(in) :: r12,r13,r23,m1,m2,m3
-        real(long),intent(out) :: rg,rp,theta
-        real(long) :: cbeta,ctheta,mred1,mred2,mred3,d1
-        
-        mred2 = (m2/(m1+m2))
-        d1 = mred2*r12
-        cbeta = (r12*r12+r13*r13-r23*r23)/(2.d0*r12*r13)
+        real(dop), intent(in)  :: r12, r13, r23, m1, m2, m3
+        real(dop), intent(out) :: rg, rp, theta
+        real(dop) :: cbeta, ctheta, mred2, d1
 
-        rp = r12
-        rg = dsqrt(r13*r13+d1*d1-2.d0*d1*r13*cbeta)
-        ctheta = (r12*r12-d1*d1-rg*rg)/(2.d0*d1*rg)
-        theta = acos(ctheta)
+        mred2 = m2/(m1+m2)
+        d1    = mred2*r12
+        cbeta = (r12*r12 + r13*r13 - r23*r23)/(2.d0*r12*r13)
+
+        rp    = r12
+        rg    = sqrt(r13*r13 + d1*d1 - 2.d0*d1*r13*cbeta)
+        ctheta = (r12*r12 - d1*d1 - rg*rg)/(2.d0*d1*rg)
+        theta  = acos(max(-1.d0,min(1.d0, ctheta)))
 
     end subroutine ic_to_Jac
-        
-    subroutine transform_coords(rgR,rpR,thetaR,rgP,rpP,thetaP,m1,m2,m3)
+
+    subroutine transform_coords(rgR, rpR, thetaR, rgP, rpP, thetaP, m1, m2, m3)
         implicit none
-        real(long), intent(in) :: rgR,rpR,thetaR,m1,m2,m3
-        real(long), intent(out) :: rgP,rpP,thetaP
-        real(long) :: r12,r13,r23
+        real(dop), intent(in)  :: rgR, rpR, thetaR, m1, m2, m3
+        real(dop), intent(out) :: rgP, rpP, thetaP
+        real(dop) :: r12, r13, r23
 
-        call Jac_to_ic(rgR,rpR,thetaR,r12,r13,r23,m1,m2,m3)
-        call ic_to_Jac(rgP,rpP,thetaP,r12,r13,r23,m1,m2,m3)
-
+        call Jac_to_ic(rgR, rpR, thetaR, r12, r13, r23, m1, m2, m3)
+        call ic_to_Jac(rgP, rpP, thetaP, r12, r13, r23, m1, m2, m3)
+        
     end subroutine transform_coords
 
     subroutine get_indexes(zetf,tot_dim):
