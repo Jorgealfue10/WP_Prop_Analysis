@@ -20,6 +20,8 @@
     use aglobal
     use memdimmod
     use keyunitsmod
+    use compdatmod
+    use rdopermod
     use operdef
     use psidef
     use iofile
@@ -33,6 +35,7 @@
     use logdat
     use gwplib, only: param_from_psi
     use channels
+    use logdat
 
     !==============================!
     !    Variables declarations    !
@@ -81,7 +84,7 @@
     complex(sip), allocatable :: spsi(:), spsigrd(:)
     complex(dop), allocatable :: adgwp(:)
     complex(dop), allocatable :: psigrd(:), workc(:)
-    logical :: lrst
+    logical :: lrst,lerr
 
     !==============================!
     !   Variables initialization   !
@@ -92,17 +95,44 @@
     chkpsi = 1
     chkdat = 1
     lrddvr = .true.
+    maxdim = 5
+    ndof1 = ndof
+    allocate(fdvr(ndof1))
+    fdvr = 0
+    lerr = .true.
+    ! call
 
     !==============================!
     !     Reading psi metadata     !
     !==============================!
+    dvrdata(1) = .true.
+    dvrdata(2) = .true.
+    if (lfft) then 
+        dvrdata(6) = .true.
+        dvrdata(7) = .true.
+        dvrdata(11) = .true.
+    endif
 
     dname="./"
-    filename=dname//'psi'
     open(ipsi,file="./psi",form='unformatted',status='old')
     rewind(ipsi)
     read(ipsi) filever(ipsi)
+    open(idvr,file="./dvr",form='unformatted',status='old')
+    open(ioper,file="./oper",form='unformatted',status='old')
+    rewind(ioper)
+    read(ioper) filever(ioper)
+    
+    print*, '>>> Debug info: ndof =', ndof
+    print*, '>>> Debug info: size(modelabel) =', size(modelabel)
+    
+    call operinfo(lerr,chkdvr,chkgrd)
+
+    chkdvr=0
     call rdpsiinfo(ipsi,chkdvr,chkgrd,chkpsi,chkdat)
+    call rdpsidef(ipsi,check)
+
+    call dvrinfo(lrddvr,chkdvr)
+    call rddvrdef(idvr,check_dvr,ndof1,fdvr)
 
     tot_dim = griddim * nstate
     
@@ -131,40 +161,36 @@
     allocate(adgwp(tot_dim))
     allocate(gwpdep(tot_dim))
     allocate(psigrd(tot_dim), spsigrd(tot_dim), workc(tot_dim))
-    allocate(fdvr(maxdim))
-
+    
     
     !==============================!
     !       Reading psi data       !
     !==============================!
 
-    write(message,*) "Reading psi data...",ndof1
+    ! routine = 'psitrjaf'
+    ! write(message,*) "Reading psi data...",ndof1
+    ! call errormsg
 
     call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
     call rdpsigrid(ipsi,psigrd,spsigrd,jindx,workc,lrst)
 
-    check=1
-    call rdpsidef(ipsi,check)
     close(ipsi)
 
     !==============================!
     !       Reading DVR data       !
     !==============================!
-    ndof1=1
-    if (lrddvr) then
-        chkdvr=-1
-        filename=dname//'dvr'
-        open(idvr,file=filename,form='unformatted',status='old')
-        
-        ! call dvrinfo(lrddvr,chkdvr)
-        call rddvr(ort,trafo,dvrmat,fftp,hin,rueck,fftfak,exphin,&
-                exprueck,jsph,msph,kinsph,chkdvr)
+    ! if (lrddvr) then
+    chkdvr=2
+    filename=dname//'dvr'
+    open(idvr,file=filename,form='unformatted',status='old')
+    
+    call rddvr(ort,trafo,dvrmat,fftp,hin,rueck,fftfak,exphin,&
+            exprueck,jsph,msph,kinsph,chkdvr)
 
-        check_dvr=1
-        ndof1=1
-        call rddvrdef(idvr,check_dvr,ndof1,fdvr)
-        close(idvr)
-    endif
+    ! check_dvr=1
+    ! ndof1=1
+    close(idvr)
+    ! endif
     auxort = ort
 
     ! if (lrdoper) then
@@ -184,23 +210,23 @@
     rgp_grid => newgrid(:,2)
     thp_grid => newgrid(:,3)
 
-    do ith = 1, subdim(3)
-        do ig = 1, subdim(2)
-            do ip = 1, subdim(1)
-                idx = ip + (ig-1)*subdim(1) + (ith-1)*subdim(1)*subdim(2)
+    ! do ith = 1, subdim(3)
+    !     do ig = 1, subdim(2)
+    !         do ip = 1, subdim(1)
+    !             idx = ip + (ig-1)*subdim(1) + (ith-1)*subdim(1)*subdim(2)
 
-                rp = rp_grid(ip)
-                rg = rg_grid(ig)
-                theta = th_grid(ith)
+    !             rp = rp_grid(ip)
+    !             rg = rg_grid(ig)
+    !             theta = th_grid(ith)
 
-                call transform_coords(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
+    !             call transform_coords(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
 
-                rpp_grid(idx) = rpp
-                rgp_grid(idx) = rgp
-                thp_grid(idx) = thetap
-            enddo
-        enddo
-    enddo
+    !             rpp_grid(idx) = rpp
+    !             rgp_grid(idx) = rgp
+    !             thp_grid(idx) = thetap
+    !         enddo
+    !     enddo
+    ! enddo
 
 
     contains
