@@ -138,6 +138,8 @@
     !       Reading psi data       !
     !==============================!
 
+    write(message,*) "Reading psi data...",ndof1
+
     call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
     call rdpsigrid(ipsi,psigrd,spsigrd,jindx,workc,lrst)
 
@@ -148,20 +150,27 @@
     !==============================!
     !       Reading DVR data       !
     !==============================!
+    ndof1=1
     if (lrddvr) then
-        chkdvr=2
+        chkdvr=-1
         filename=dname//'dvr'
         open(idvr,file=filename,form='unformatted',status='old')
         
-        call dvrinfo(lrddvr,chkdvr)
+        ! call dvrinfo(lrddvr,chkdvr)
         call rddvr(ort,trafo,dvrmat,fftp,hin,rueck,fftfak,exphin,&
                 exprueck,jsph,msph,kinsph,chkdvr)
 
         check_dvr=1
+        ndof1=1
         call rddvrdef(idvr,check_dvr,ndof1,fdvr)
         close(idvr)
     endif
     auxort = ort
+
+    ! if (lrdoper) then
+    !     operfile=operfile
+    !     call rdoper(hops,chkdvr,chkgrd)
+    ! endif
 
     !==============================!
     !      Transforming grid       !
