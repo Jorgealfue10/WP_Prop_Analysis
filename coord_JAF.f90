@@ -43,7 +43,7 @@
 
     implicit none
     ! --- indexes and counters ---
-    integer(long) :: i, j, k
+    integer(long) :: i, j, k, ilbl
     integer(long) :: ip, ig, ith, idx
     integer(long) :: ierr
     integer(long) :: chkdvr, chkgrd, chkpsi, chkdat
@@ -95,7 +95,7 @@
     chkpsi = 1
     chkdat = 1
     lrddvr = .true.
-    maxdim = 5
+    maxdim = 4
     ndof1 = ndof
     allocate(fdvr(ndof1))
     fdvr = 0
@@ -113,11 +113,11 @@
         dvrdata(11) = .true.
     endif
 
-    dname="./"
+    ! dname="./"
     open(ipsi,file="./psi",form='unformatted',status='old')
     rewind(ipsi)
     read(ipsi) filever(ipsi)
-    open(idvr,file="./dvr",form='unformatted',status='old')
+    ! open(idvr,file="./dvr",form='unformatted',status='old')
     open(ioper,file="./oper",form='unformatted',status='old')
     rewind(ioper)
     read(ioper) filever(ioper)
@@ -125,13 +125,24 @@
     print*, '>>> Debug info: ndof =', ndof
     print*, '>>> Debug info: size(modelabel) =', size(modelabel)
     
-    call operinfo(lerr,chkdvr,chkgrd)
+    ! call operinfo(lerr,chkdvr,chkgrd)
+
+    allocmemory=0
+    call alloc_dvrdat
+    call alloc_grddat    
+    call alloc_psidef
+
+    open(idvr,file="./dvr",form='unformatted',status='old')
+    write(6,'(a)') ' Reading DVR data from '//filename(1:ilbl)
+    
+    chkdvr=1
+    call dvrinfo(lerr,chkdvr)
+    close(idvr)
 
     chkdvr=0
     call rdpsiinfo(ipsi,chkdvr,chkgrd,chkpsi,chkdat)
-    call rdpsidef(ipsi,check)
 
-    call dvrinfo(lrddvr,chkdvr)
+    call rdpsidef(ipsi,check)
     call rddvrdef(idvr,check_dvr,ndof1,fdvr)
 
     tot_dim = griddim * nstate
@@ -210,23 +221,23 @@
     rgp_grid => newgrid(:,2)
     thp_grid => newgrid(:,3)
 
-    ! do ith = 1, subdim(3)
-    !     do ig = 1, subdim(2)
-    !         do ip = 1, subdim(1)
-    !             idx = ip + (ig-1)*subdim(1) + (ith-1)*subdim(1)*subdim(2)
+    do ith = 1, subdim(3)
+        do ig = 1, subdim(2)
+            do ip = 1, subdim(1)
+                idx = ip + (ig-1)*subdim(1) + (ith-1)*subdim(1)*subdim(2)
 
-    !             rp = rp_grid(ip)
-    !             rg = rg_grid(ig)
-    !             theta = th_grid(ith)
+                rp = rp_grid(ip)
+                rg = rg_grid(ig)
+                theta = th_grid(ith)
 
-    !             call transform_coords(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
+                call transform_coords(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
 
-    !             rpp_grid(idx) = rpp
-    !             rgp_grid(idx) = rgp
-    !             thp_grid(idx) = thetap
-    !         enddo
-    !     enddo
-    ! enddo
+                rpp_grid(idx) = rpp
+                rgp_grid(idx) = rgp
+                thp_grid(idx) = thetap
+            enddo
+        enddo
+    enddo
 
 
     contains
