@@ -1,4 +1,4 @@
-    program psitrJAF 
+program psitrJAF 
     
     ! kinds
     use decimal,     only: long, sip, dop
@@ -36,6 +36,7 @@
     use gwplib, only: param_from_psi
     use channels
     use logdat
+    use maxv
 
     !==============================!
     !    Variables declarations    !
@@ -95,62 +96,71 @@
     chkpsi = 1
     chkdat = 1
     lrddvr = .true.
-    maxdim = 4
-    ndof1 = ndof
-    allocate(fdvr(ndof1))
-    fdvr = 0
     lerr = .true.
-    ! call
+
+    call default
+    call adefault
+
+    allocate(fdvr(maxdim))
 
     !==============================!
-    !     Reading psi metadata     !
+    ! 1) Leer memdim del OPER      !
     !==============================!
-    dvrdata(1) = .true.
-    dvrdata(2) = .true.
-    if (lfft) then 
-        dvrdata(6) = .true.
-        dvrdata(7) = .true.
-        dvrdata(11) = .true.
-    endif
-
-    ! dname="./"
-    open(ipsi,file="./psi",form='unformatted',status='old')
-    rewind(ipsi)
-    read(ipsi) filever(ipsi)
-    ! open(idvr,file="./dvr",form='unformatted',status='old')
     open(ioper,file="./oper",form='unformatted',status='old')
-    rewind(ioper)
-    read(ioper) filever(ioper)
-    
-    print*, '>>> Debug info: ndof =', ndof
-    print*, '>>> Debug info: size(modelabel) =', size(modelabel)
-    
-    ! call operinfo(lerr,chkdvr,chkgrd)
+    call rdmemdim(ioper)
+    close(ioper)
 
+    !==============================!
+    ! 2) Reservar memoria módulos  !
+    !==============================!
     allocmemory=0
     call alloc_dvrdat
     call alloc_grddat    
     call alloc_psidef
 
-    open(idvr,file="./dvr",form='unformatted',status='old')
-    write(6,'(a)') ' Reading DVR data from '//filename(1:ilbl)
-    
+    ! (no añadimos lógica; mantengo tus módulos tal cual)
+
+        !==============================!
+    ! Flags para leer DVR arrays   !
+    !==============================!
+    dvrdata(1) = .true.
+    dvrdata(2) = .true.
+    if (lfft) then 
+        dvrdata(6)  = .true.
+        dvrdata(7)  = .true.
+        dvrdata(11) = .true.
+    endif
+
+    !==============================!
+    ! 3) dvrinfo (lee defs/labels) !
+    !==============================!
+    filename = "./dvr"
+    ! ilbl = index(filename,' ')-1
+    open(idvr,file=filename,form='unformatted',status='old')
+    write(6,'(a)') ' Reading DVR data from '//filename
     chkdvr=1
     call dvrinfo(lerr,chkdvr)
+    rewind(idvr)
+    chkdvr=0
+    call rddvrdef(idvr,chkdvr,ndof1,fdvr)
     close(idvr)
 
+    !==============================!
+    ! 4) Abrir psi y leer headers  !
+    !==============================!
+    open(ipsi,file="./psi",form='unformatted',status='old')
+    rewind(ipsi)
+    read(ipsi) filever(ipsi)
     chkdvr=0
+    chkgrd=1
+    chkpsi=1
+    chkdat=1
     call rdpsiinfo(ipsi,chkdvr,chkgrd,chkpsi,chkdat)
-
     call rdpsidef(ipsi,check)
-    call rddvrdef(idvr,check_dvr,ndof1,fdvr)
 
-    tot_dim = griddim * nstate
-    
-    !==============================!
-    !       Allocating vars        !
-    !==============================!
-
+    ! !==============================!
+    ! ! 7) Reservas locales          !
+    ! !==============================!
     allocate(rp_grid(subdim(1)),rg_grid(subdim(2)),th_grid(subdim(3)))
     allocate(rpp_grid(griddim),rgp_grid(griddim),thp_grid(griddim))
     allocate(newgrid(griddim,nmode),auxort(griddim))
@@ -172,46 +182,35 @@
     allocate(adgwp(tot_dim))
     allocate(gwpdep(tot_dim))
     allocate(psigrd(tot_dim), spsigrd(tot_dim), workc(tot_dim))
-    
-    
-    !==============================!
-    !       Reading psi data       !
-    !==============================!
-
-    ! routine = 'psitrjaf'
-    ! write(message,*) "Reading psi data...",ndof1
-    ! call errormsg
-
-    call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
-    call rdpsigrid(ipsi,psigrd,spsigrd,jindx,workc,lrst)
-
-    close(ipsi)
 
     !==============================!
-    !       Reading DVR data       !
+    ! 5) Leer arrays del DVR       !
     !==============================!
-    ! if (lrddvr) then
+    open(idvr,file="./dvr",form='unformatted',status='old')
     chkdvr=2
-    filename=dname//'dvr'
-    open(idvr,file=filename,form='unformatted',status='old')
-    
     call rddvr(ort,trafo,dvrmat,fftp,hin,rueck,fftfak,exphin,&
             exprueck,jsph,msph,kinsph,chkdvr)
-
-    ! check_dvr=1
-    ! ndof1=1
     close(idvr)
-    ! endif
+
+    !==============================!
+    ! 6) Dimensiones dependientes  !
+    !==============================!
+    tot_dim = griddim * nstate
+
+    !==============================!
+    ! 8) Leer datos de la psi      !
+    !==============================!
+    call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
+    workcdim=max(workcdim,dgldim+maxspf*2)
+    lrst=.true.
+    call rdpsigrid(ipsi,psigrd,spsigrd,jindx,workc,lrst)
+    close(ipsi)
+    print*,"AA"
+
+    !==============================!
+    ! 9) Preparar grid transform   !
+    !==============================!
     auxort = ort
-
-    ! if (lrdoper) then
-    !     operfile=operfile
-    !     call rdoper(hops,chkdvr,chkgrd)
-    ! endif
-
-    !==============================!
-    !      Transforming grid       !
-    !==============================!
 
     rp_grid => auxort(zort(1):(zort(1)+subdim(1)-1))
     rg_grid => auxort(zort(2):(zort(2)+subdim(2)-1))
@@ -221,26 +220,22 @@
     rgp_grid => newgrid(:,2)
     thp_grid => newgrid(:,3)
 
-    do ith = 1, subdim(3)
-        do ig = 1, subdim(2)
-            do ip = 1, subdim(1)
-                idx = ip + (ig-1)*subdim(1) + (ith-1)*subdim(1)*subdim(2)
+    ! do ith = 1, subdim(3)
+    !     do ig = 1, subdim(2)
+    !         do ip = 1, subdim(1)
+    !             idx = ip + (ig-1)*subdim(1) + (ith-1)*subdim(1)*subdim(2)
+    !             rp = rp_grid(ip)
+    !             rg = rg_grid(ig)
+    !             theta = th_grid(ith)
+    !             call transform_coords(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
+    !             rpp_grid(idx) = rpp
+    !             rgp_grid(idx) = rgp
+    !             thp_grid(idx) = thetap
+    !         enddo
+    !     enddo
+    ! enddo
 
-                rp = rp_grid(ip)
-                rg = rg_grid(ig)
-                theta = th_grid(ith)
-
-                call transform_coords(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
-
-                rpp_grid(idx) = rpp
-                rgp_grid(idx) = rgp
-                thp_grid(idx) = thetap
-            enddo
-        enddo
-    enddo
-
-
-    contains
+contains
 
     !==============================!
     ! Transforms the coordinates   !
@@ -261,7 +256,6 @@
         r12 = sqrt(rg*rg + (mred3*rp)**2 + 2.d0*rg*mred3*rp*cos(thrad))
         r13 = sqrt(rg*rg + (mred2*rp)**2 - 2.d0*rg*mred2*rp*cos(thrad))
         r23 = rp
-
     end subroutine Jac_to_ic
 
     subroutine ic_to_Jac(rg, rp, theta, r12, r13, r23, m1, m2, m3)
@@ -278,7 +272,6 @@
         rg    = sqrt(r12*r12 + d1*d1 - 2.d0*d1*r12*cbeta)
         ctheta = (r12*r12 - d1*d1 - rg*rg)/(-2.d0*d1*rg)
         theta  = acos(max(-1.d0,min(1.d0, ctheta)))
-
     end subroutine ic_to_Jac
 
     subroutine transform_coords(rgR, rpR, thetaR, rgP, rpP, thetaP, m1, m2, m3)
@@ -289,7 +282,6 @@
 
         call Jac_to_ic(rgR, rpR, thetaR, r12, r13, r23, m1, m2, m3)
         call ic_to_Jac(rgP, rpP, thetaP, r12, r13, r23, m1, m2, m3)
-        
     end subroutine transform_coords
 
 end program psitrJAF
