@@ -37,6 +37,7 @@ program psitrJAF
     use channels
     use logdat
     use maxv
+    use psioutmod
 
     !==============================!
     !    Variables declarations    !
@@ -49,6 +50,7 @@ program psitrJAF
     integer(long) :: ierr
     integer(long) :: chkdvr, chkgrd, chkpsi, chkdat
     integer(long) :: check, check_dvr
+    integer(long) :: nrp, nrg, nth
     integer(long) :: tot_dim
     integer(long) :: ndof1
     integer(long), allocatable :: fdvr(:)
@@ -65,7 +67,8 @@ program psitrJAF
     real(dop) :: rp, rg, theta                  ! coordenadas iniciales
     real(dop) :: rpp, rgp, thetap               ! coordenadas transformadas
     real(dop) :: r12, r13, r23                  ! coordenadas internas
-    real(dop) :: m1, m2, m3                     ! masas atómicas
+    real(dop) :: m1, m2, m3                    ! masas atómicas
+    real(dop) :: time
 
     ! --- namefiles ---
     character(len=200) :: filename
@@ -97,6 +100,9 @@ program psitrJAF
     chkdat = 1
     lrddvr = .true.
     lerr = .true.
+    lrst=.false.
+
+    pi = dacos(-1.d0)
 
     call default
     call adefault
@@ -145,11 +151,15 @@ program psitrJAF
     call rddvrdef(idvr,chkdvr,ndof1,fdvr)
     close(idvr)
 
+    nrp = zort(2)-zort(1)
+    nrg = zort(3)-zort(2)
+    nth = zort(4)-zort(3)
+    print*,'nrp,nrg,nth=',nrp,nrg,nth
+
     !==============================!
     ! 4) Abrir psi y leer headers  !
     !==============================!
     open(ipsi,file="./psi",form='unformatted',status='old')
-    rewind(ipsi)
     read(ipsi) filever(ipsi)
     chkdvr=0
     chkgrd=1
@@ -157,16 +167,19 @@ program psitrJAF
     chkdat=1
     call rdpsiinfo(ipsi,chkdvr,chkgrd,chkpsi,chkdat)
     call rdpsidef(ipsi,check)
+    close(ipsi)
 
+    print*,ortdim,fftdim,expdim,sphdim,dgldim,dvrdim
     ! !==============================!
     ! ! 7) Reservas locales          !
     ! !==============================!
-    allocate(rp_grid(subdim(1)),rg_grid(subdim(2)),th_grid(subdim(3)))
-    allocate(rpp_grid(griddim),rgp_grid(griddim),thp_grid(griddim))
-    allocate(newgrid(griddim,nmode),auxort(griddim))
+    allocate(rp_grid(nrp),rg_grid(nrg),th_grid(nth))
+    allocate(rpp_grid(subdim(1)),rgp_grid(subdim(1)),thp_grid(subdim(1)))
+    allocate(newgrid(subdim(1),nmode),auxort(ortdim))
     allocate(ort(ortdim))
     allocate(trafo(ortdim, ortdim))
-    allocate(dvrmat(dvrdim, dvrdim))
+    allocate(dvrmat(dvrdim, dvrord))
+    
     allocate(fftp(fftdim))
     allocate(hin(fftdim))
     allocate(rueck(fftdim))
@@ -176,12 +189,12 @@ program psitrJAF
     allocate(jsph(sphdim))
     allocate(msph(sphdim))
     allocate(kinsph(sphdim))
-    allocate(psi(tot_dim), spsi(tot_dim))
-    allocate(jindx(tot_dim))
-    allocate(trajst(tot_dim))
-    allocate(adgwp(tot_dim))
-    allocate(gwpdep(tot_dim))
-    allocate(psigrd(tot_dim), spsigrd(tot_dim), workc(tot_dim))
+    allocate(psi(dgldim), spsi(dgldim))
+    allocate(jindx(dgldim))
+    allocate(trajst(dgldim))
+    allocate(adgwp(dgldim))
+    allocate(gwpdep(dgldim))
+    allocate(psigrd(ortdim), spsigrd(ortdim), workc(ortdim))
 
     !==============================!
     ! 5) Leer arrays del DVR       !
@@ -193,47 +206,72 @@ program psitrJAF
     close(idvr)
 
     !==============================!
-    ! 6) Dimensiones dependientes  !
-    !==============================!
-    tot_dim = griddim * nstate
-
-    !==============================!
     ! 8) Leer datos de la psi      !
     !==============================!
+    open(ipsi,file="./psi",form='unformatted',status='old')
+    read(ipsi) filever(ipsi)
     call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
-    workcdim=max(workcdim,dgldim+maxspf*2)
-    lrst=.true.
-    call rdpsigrid(ipsi,psigrd,spsigrd,jindx,workc,lrst)
+    print*,'filever(ipsi)=',filever(ipsi), "ipsi=",ipsi
+    print*,workcdim
+    workcdim = max(workcdim, dgldim + 2*maxspf + 4)
+    if (allocated(workc)) deallocate(workc)
+    ! print*,workcdim
+    allocate(workc(workcdim))
+    ! call rdpsigrid(ipsi,psigrd,spsigrd,jindx,workc,lrst)
     close(ipsi)
-    print*,"AA"
 
     !==============================!
     ! 9) Preparar grid transform   !
     !==============================!
     auxort = ort
 
-    rp_grid => auxort(zort(1):(zort(1)+subdim(1)-1))
-    rg_grid => auxort(zort(2):(zort(2)+subdim(2)-1))
-    th_grid => auxort(zort(3):(zort(3)+subdim(3)-1))
+    print*,"subdim= ",subdim
+    print*,"ortdim= ",ortdim
+    print*,"zort= ",zort
+    print*,"shape zort= ",shape(ort)
+    rp_grid => auxort(zort(1):(zort(2)-1))
+    rg_grid => auxort(zort(2):(zort(3)-1))
+    th_grid => auxort(zort(3):(zort(4)-1))
 
     rpp_grid => newgrid(:,1)
     rgp_grid => newgrid(:,2)
     thp_grid => newgrid(:,3)
 
-    ! do ith = 1, subdim(3)
-    !     do ig = 1, subdim(2)
-    !         do ip = 1, subdim(1)
-    !             idx = ip + (ig-1)*subdim(1) + (ith-1)*subdim(1)*subdim(2)
-    !             rp = rp_grid(ip)
-    !             rg = rg_grid(ig)
-    !             theta = th_grid(ith)
-    !             call transform_coords(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
-    !             rpp_grid(idx) = rpp
-    !             rgp_grid(idx) = rgp
-    !             thp_grid(idx) = thetap
-    !         enddo
-    !     enddo
-    ! enddo
+    m1 = 30.9737620d0
+    m2 = 2.0141017778d0
+    m3 = 2.0141017778d0
+
+    open(unit=100,file="grid_test.dat",status="replace",action="write")
+    do ith = 1, nth
+        do ig = 1, nrg
+            do ip = 1, nrp
+                idx = ip + (ig-1)*nrp + (ith-1)*nrp*nrg
+                rp = rp_grid(ip)
+                rg = rg_grid(ig)
+                theta = th_grid(ith)
+                call transform_coords(rp,rg,theta,rpp,rgp,thetap,m1,m2,m3)
+                rpp_grid(idx) = rpp
+                rgp_grid(idx) = rgp
+                thp_grid(idx) = thetap
+
+                theta = theta*180.0d0/pi
+                write(100,fmt="(6(f12.8,1x),2x,2f18.12)") rpp, rgp, thetap, rp, rg, theta, psi(idx)
+            enddo
+        enddo
+        write(100,*) " "
+    enddo
+    close(100)
+
+    call psiout(psi,dicht4,time,jindx,agmat,trajst,gwpdep)
+
+    deallocate(auxort, newgrid, ort)
+    deallocate(trafo, dvrmat, fftp, hin, rueck, fftfak, exphin)
+    deallocate(exprueck, jsph, msph, kinsph, jindx, trajst)
+    deallocate(adgwp, gwpdep, psigrd, spsigrd, workc)
+
+    call alloc_dvrdat
+    call alloc_grddat    
+    call alloc_psidef
 
 contains
 
@@ -247,8 +285,10 @@ contains
         implicit none
         real(dop), intent(in)  :: rg, rp, theta, m1, m2, m3
         real(dop), intent(out) :: r12, r13, r23
-        real(dop) :: thrad, mred2, mred3
+        real(dop) :: thrad, mred2, mred3, pi 
 
+        pi = dacos(-1.d0)
+        ! thrad = theta*pi/180.d0
         thrad = theta
         mred2 = m2/(m2+m3)
         mred3 = m3/(m2+m3)
@@ -262,16 +302,21 @@ contains
         implicit none
         real(dop), intent(in)  :: r12, r13, r23, m1, m2, m3
         real(dop), intent(out) :: rg, rp, theta
-        real(dop) :: cbeta, ctheta, mred2, d1
+        real(dop) :: cbeta, ctheta, mred2, d1, pi
 
+        pi = dacos(-1.d0)
         mred2 = m2/(m1+m2)
         d1    = mred2*r13
         cbeta = (r12*r12 + r13*r13 - r23*r23)/(2.d0*r12*r13)
 
+        ! print*,"IC to JAC ",r12,r13,r23,cbeta,d1,mred2
+
         rp    = r13
         rg    = sqrt(r12*r12 + d1*d1 - 2.d0*d1*r12*cbeta)
         ctheta = (r12*r12 - d1*d1 - rg*rg)/(-2.d0*d1*rg)
-        theta  = acos(max(-1.d0,min(1.d0, ctheta)))
+
+        theta  = acos(ctheta)
+        theta  = theta*180.d0/pi
     end subroutine ic_to_Jac
 
     subroutine transform_coords(rgR, rpR, thetaR, rgP, rpP, thetaP, m1, m2, m3)
