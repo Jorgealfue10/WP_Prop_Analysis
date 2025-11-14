@@ -55,6 +55,9 @@ program psitrJAF
     integer(long) :: ndof1
     integer(long), allocatable :: fdvr(:)
 
+    ! --- arguments ---
+    integer(long) :: ntime
+
     ! --- real arrays ---
     real(dop), allocatable, target :: newgrid(:,:)      ! grid completo transformado
     real(dop), allocatable, target :: auxort(:)
@@ -89,6 +92,12 @@ program psitrJAF
     complex(dop), allocatable :: adgwp(:)
     complex(dop), allocatable :: psigrd(:), workc(:)
     logical :: lrst,lerr
+
+    !==============!
+    !  Tiempo WF   !
+    !==============!
+    write(*,fmt="(a)",advance="no") "WF Time: "
+    read(*,*) ntime
 
     !==============================!
     !   Variables initialization   !
@@ -210,9 +219,11 @@ program psitrJAF
     !==============================!
     open(ipsi,file="./psi",form='unformatted',status='old')
     read(ipsi) filever(ipsi)
-    call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
-    print*,'filever(ipsi)=',filever(ipsi), "ipsi=",ipsi
-    print*,workcdim
+
+    do i = 1, ntime
+        call rdpsi(ipsi,psi,spsi,jindx,agmat,trajst,adgwp,gwpdep)
+    enddo
+
     workcdim = max(workcdim, dgldim + 2*maxspf + 4)
     if (allocated(workc)) deallocate(workc)
     ! print*,workcdim
