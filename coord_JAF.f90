@@ -163,12 +163,13 @@ program psitrJAF
     nrp = zort(2)-zort(1)
     nrg = zort(3)-zort(2)
     nth = zort(4)-zort(3)
+    griddim = nrp*nrg*nth
     print*,'nrp,nrg,nth=',nrp,nrg,nth
 
     !==============================!
     ! 4) Abrir psi y leer headers  !
     !==============================!
-    open(ipsi,file="./psi",form='unformatted',status='old')
+    open(ipsi,file="./psi_prev",form='unformatted',status='old')
     read(ipsi) filever(ipsi)
     chkdvr=0
     chkgrd=1
@@ -178,7 +179,7 @@ program psitrJAF
     call rdpsidef(ipsi,check)
     close(ipsi)
 
-    print*,ortdim,fftdim,expdim,sphdim,dgldim,dvrdim
+    print*,griddim,ortdim,fftdim,expdim,sphdim,dgldim,dvrdim
     ! !==============================!
     ! ! 7) Reservas locales          !
     ! !==============================!
@@ -217,7 +218,7 @@ program psitrJAF
     !==============================!
     ! 8) Leer datos de la psi      !
     !==============================!
-    open(ipsi,file="./psi",form='unformatted',status='old')
+    open(ipsi,file="./psi_prev",form='unformatted',status='old')
     read(ipsi) filever(ipsi)
 
     do i = 1, ntime
@@ -226,7 +227,6 @@ program psitrJAF
 
     workcdim = max(workcdim, dgldim + 2*maxspf + 4)
     if (allocated(workc)) deallocate(workc)
-    ! print*,workcdim
     allocate(workc(workcdim))
     ! call rdpsigrid(ipsi,psigrd,spsigrd,jindx,workc,lrst)
     close(ipsi)
